@@ -1,0 +1,14 @@
+{
+  "name": "excel-web-mysql-ready",
+  "version": "1.0.0",
+  "description": "展示 Excel 数据并提供可抓取 API，支持直接导入 MySQL",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "xlsx": "^0.18.5"
+  }
+}
