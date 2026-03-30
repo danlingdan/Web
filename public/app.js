@@ -4,8 +4,11 @@ async function loadData() {
   const tableBody = document.getElementById("table-body");
 
   try {
-    const response = await fetch("/api/data");
-    const payload = await response.json();
+    let payload = window.__INITIAL_DATA__;
+    if (!payload) {
+      const response = await fetch("/api/data");
+      payload = await response.json();
+    }
 
     if (!payload.ok) {
       meta.textContent = payload.message;

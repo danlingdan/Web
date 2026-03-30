@@ -8,6 +8,8 @@ const PORT = process.env.PORT || 3000;
 const EXCEL_FILE_CANDIDATES = ["供应明细.xlsx", "明细.xlsx"];
 const TARGET_SHEET_INDEX = 1;
 const TABLE_NAME = process.env.MYSQL_TABLE || "excel_items";
+const PUBLIC_DIR = path.join(process.cwd(), "public");
+const INDEX_HTML_PATH = path.join(PUBLIC_DIR, "index.html");
 
 function resolveExcelFilePath() {
   for (const name of EXCEL_FILE_CANDIDATES) {
@@ -182,7 +184,70 @@ function toCsv(rows, headers) {
   return lines.join("\n");
 }
 
-app.use(express.static(path.join(process.cwd(), "public")));
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildMetaText(payload) {
+  if (!payload.ok) return payload.message;
+  return `工作表：${payload.sheetName} | 记录数：${payload.rows.length} | 生成时间：${new Date(payload.generatedAt).toLocaleString()}`;
+}
+
+function renderTableHead(headers) {
+  if (!headers.length) return "";
+  const cells = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
+  return `<tr>${cells}</tr>`;
+}
+
+function renderTableBody(rows, headers) {
+  if (!rows.length || !headers.length) return "";
+
+  return rows
+    .map((row) => {
+      const cells = headers
+        .map((header) => {
+          const value = row[header] === null || row[header] === undefined ? "" : row[header];
+          return `<td data-field=\"${escapeHtml(header)}\">${escapeHtml(value)}</td>`;
+        })
+        .join("");
+      return `<tr>${cells}</tr>`;
+    })
+    .join("");
+}
+
+function renderIndexHtml(payload) {
+  const template = fs.readFileSync(INDEX_HTML_PATH, "utf8");
+  const metaText = buildMetaText(payload);
+  const headHtml = payload.ok ? renderTableHead(payload.headers) : "";
+  const bodyHtml = payload.ok ? renderTableBody(payload.rows, payload.headers) : "";
+  const initialPayload = JSON.stringify(payload).replace(/<\//g, "<\\/");
+
+  return template
+    .replace(
+      '<div class="meta" id="meta">正在加载数据...</div>',
+      `<div class=\"meta\" id=\"meta\">${escapeHtml(metaText)}</div>`
+    )
+    .replace('<thead id="table-head"></thead>', `<thead id=\"table-head\">${headHtml}</thead>`)
+    .replace('<tbody id="table-body"></tbody>', `<tbody id=\"table-body\">${bodyHtml}</tbody>`)
+    .replace(
+      '<script src="/app.js"></script>',
+      `<script>window.__INITIAL_DATA__ = ${initialPayload};</script>\n    <script src=\"/app.js\"></script>`
+    );
+}
+
+app.use(express.static(PUBLIC_DIR, { index: false }));
+
+app.get("/", (req, res) => {
+  const payload = readExcelData();
+  const html = renderIndexHtml(payload);
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  return res.send(html);
+});
 
 app.get("/api/data", (req, res) => {
   const payload = readExcelData();
@@ -218,7 +283,10 @@ app.get("/api/mysql.sql", (req, res) => {
 });
 
 app.get("*", (req, res) => {
-  res.sendFile(path.join(process.cwd(), "public", "index.html"));
+  const payload = readExcelData();
+  const html = renderIndexHtml(payload);
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  return res.send(html);
 });
 
 app.listen(PORT, () => {
