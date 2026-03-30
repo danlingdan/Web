@@ -5,52 +5,103 @@ const XLSX = require("xlsx");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const EXCEL_FILE_PATH = path.join(process.cwd(), "明细.xlsx");
+const EXCEL_FILE_CANDIDATES = ["供应明细.xlsx", "明细.xlsx"];
+const TARGET_SHEET_INDEX = 1;
 const TABLE_NAME = process.env.MYSQL_TABLE || "excel_items";
 
-function detectQuantityKey(row) {
-  const keys = Object.keys(row || {});
-  const keywordList = ["数量", "qty", "count", "数目", "件数", "数量(个)"];
-
-  for (const key of keys) {
-    const lowerKey = String(key).toLowerCase();
-    if (keywordList.some((k) => lowerKey.includes(String(k).toLowerCase()))) {
-      return key;
+function resolveExcelFilePath() {
+  for (const name of EXCEL_FILE_CANDIDATES) {
+    const filePath = path.join(process.cwd(), name);
+    if (fs.existsSync(filePath)) {
+      return filePath;
     }
   }
 
-  return null;
+  return path.join(process.cwd(), EXCEL_FILE_CANDIDATES[0]);
 }
 
-function randomQuantity() {
-  return Math.floor(Math.random() * 200) + 1;
+function randomDateInMarch2026() {
+  const day = Math.floor(Math.random() * 31) + 1;
+  return `2026-03-${String(day).padStart(2, "0")}`;
+}
+
+function formatDateValue(dateObj) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const d = String(dateObj.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function normalizePurchaseDate(value) {
+  if (value === undefined || value === null || value === "") {
+    return randomDateInMarch2026();
+  }
+
+  if (typeof value === "number") {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed && parsed.y && parsed.m && parsed.d) {
+      return `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
+    }
+    return randomDateInMarch2026();
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return randomDateInMarch2026();
+  }
+
+  const normalizedText = text.replace(/[./年]/g, "-").replace(/[月]/g, "-").replace(/[日]/g, "");
+  const parsedTime = Date.parse(normalizedText);
+  if (!Number.isNaN(parsedTime)) {
+    return formatDateValue(new Date(parsedTime));
+  }
+
+  return randomDateInMarch2026();
 }
 
 function normalizeRows(rawRows) {
   if (!Array.isArray(rawRows)) return [];
 
-  return rawRows.map((row, index) => {
+  return rawRows.map((row) => {
     const safeRow = { ...row };
-    const quantityKey = detectQuantityKey(safeRow);
 
-    if (quantityKey) {
-      safeRow[quantityKey] = randomQuantity();
-    } else {
-      safeRow["数量"] = randomQuantity();
+    if (safeRow["商品名称"] !== undefined && safeRow["生产设备/零件"] === undefined) {
+      safeRow["生产设备/零件"] = safeRow["商品名称"];
+      delete safeRow["商品名称"];
     }
 
-    return {
-      序号: index + 1,
-      ...safeRow,
-    };
+    safeRow["采购日期"] = normalizePurchaseDate(safeRow["采购日期"]);
+
+    if (safeRow["数量"] === undefined || safeRow["数量"] === null || safeRow["数量"] === "") {
+      safeRow["数量"] = 0;
+    }
+
+    const orderedRow = {};
+    const keyOrder = ["序号", "供应商", "生产设备/零件", "采购日期", "数量"];
+
+    for (const key of keyOrder) {
+      if (safeRow[key] !== undefined) {
+        orderedRow[key] = safeRow[key];
+      }
+    }
+
+    for (const key of Object.keys(safeRow)) {
+      if (orderedRow[key] === undefined) {
+        orderedRow[key] = safeRow[key];
+      }
+    }
+
+    return orderedRow;
   });
 }
 
 function readExcelData() {
-  if (!fs.existsSync(EXCEL_FILE_PATH)) {
+  const excelFilePath = resolveExcelFilePath();
+
+  if (!fs.existsSync(excelFilePath)) {
     return {
       ok: false,
-      message: `未找到 Excel 文件：${EXCEL_FILE_PATH}`,
+      message: `未找到 Excel 文件：${excelFilePath}`,
       sheetName: "",
       headers: [],
       rows: [],
@@ -58,8 +109,8 @@ function readExcelData() {
     };
   }
 
-  const workbook = XLSX.readFile(EXCEL_FILE_PATH);
-  const sheetName = workbook.SheetNames[0];
+  const workbook = XLSX.readFile(excelFilePath);
+  const sheetName = workbook.SheetNames[TARGET_SHEET_INDEX] || workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
   const rows = normalizeRows(rawRows);
@@ -87,6 +138,7 @@ function buildCreateTableSQL(headers, tableName) {
   const cols = headers.map((h) => {
     if (h === "序号") return `\`${h}\` INT`;
     if (String(h).toLowerCase().includes("数量")) return `\`${h}\` INT`;
+    if (String(h).includes("日期")) return `\`${h}\` DATE`;
     return `\`${h}\` TEXT`;
   });
 
@@ -171,5 +223,5 @@ app.get("*", (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
-  console.log(`Reading Excel from: ${EXCEL_FILE_PATH}`);
+  console.log(`Reading Excel from: ${resolveExcelFilePath()}`);
 });
