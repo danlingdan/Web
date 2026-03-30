@@ -6,7 +6,7 @@ const XLSX = require("xlsx");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const EXCEL_FILE_CANDIDATES = ["供应明细.xlsx", "明细.xlsx"];
-const TARGET_SHEET_INDEX = 1;
+const TARGET_SHEET_NAMES = ["供应数据", "供应商表", "设备零件表"];
 const TABLE_NAME = process.env.MYSQL_TABLE || "excel_items";
 const PUBLIC_DIR = path.join(process.cwd(), "public");
 const INDEX_HTML_PATH = path.join(PUBLIC_DIR, "index.html");
@@ -97,7 +97,37 @@ function normalizeRows(rawRows) {
   });
 }
 
-function readExcelData() {
+function normalizeRowsBySheet(rawRows, sheetName) {
+  if (sheetName === "供应数据") {
+    return normalizeRows(rawRows);
+  }
+
+  return Array.isArray(rawRows) ? rawRows : [];
+}
+
+function resolveRequestedSheetName(workbook, requestedSheetName) {
+  if (requestedSheetName && workbook.SheetNames.includes(requestedSheetName)) {
+    return requestedSheetName;
+  }
+
+  for (const targetName of TARGET_SHEET_NAMES) {
+    if (workbook.SheetNames.includes(targetName)) {
+      return targetName;
+    }
+  }
+
+  return workbook.SheetNames[0] || "";
+}
+
+function getSheetList(workbook) {
+  const prioritized = TARGET_SHEET_NAMES.filter((name) => workbook.SheetNames.includes(name));
+  if (prioritized.length) {
+    return prioritized;
+  }
+  return [...workbook.SheetNames];
+}
+
+function readExcelData(requestedSheetName) {
   const excelFilePath = resolveExcelFilePath();
 
   if (!fs.existsSync(excelFilePath)) {
@@ -105,6 +135,7 @@ function readExcelData() {
       ok: false,
       message: `未找到 Excel 文件：${excelFilePath}`,
       sheetName: "",
+      availableSheets: [],
       headers: [],
       rows: [],
       generatedAt: new Date().toISOString(),
@@ -112,18 +143,66 @@ function readExcelData() {
   }
 
   const workbook = XLSX.readFile(excelFilePath);
-  const sheetName = workbook.SheetNames[TARGET_SHEET_INDEX] || workbook.SheetNames[0];
+  const sheetName = resolveRequestedSheetName(workbook, requestedSheetName);
+
+  if (!sheetName) {
+    return {
+      ok: false,
+      message: "Excel 中没有可用工作表",
+      sheetName: "",
+      availableSheets: [],
+      headers: [],
+      rows: [],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
   const sheet = workbook.Sheets[sheetName];
   const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-  const rows = normalizeRows(rawRows);
+  const rows = normalizeRowsBySheet(rawRows, sheetName);
   const headers = rows.length ? Object.keys(rows[0]) : [];
 
   return {
     ok: true,
     message: "success",
     sheetName,
+    availableSheets: getSheetList(workbook),
     headers,
     rows,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+function readSheetSummaries() {
+  const excelFilePath = resolveExcelFilePath();
+
+  if (!fs.existsSync(excelFilePath)) {
+    return {
+      ok: false,
+      message: `未找到 Excel 文件：${excelFilePath}`,
+      sheets: [],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const workbook = XLSX.readFile(excelFilePath);
+  const sheetNames = getSheetList(workbook);
+  const sheets = sheetNames.map((sheetName) => {
+    const rawRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+    const rows = normalizeRowsBySheet(rawRows, sheetName);
+    const headers = rows.length ? Object.keys(rows[0]) : [];
+
+    return {
+      sheetName,
+      rowCount: rows.length,
+      headers,
+    };
+  });
+
+  return {
+    ok: true,
+    message: "success",
+    sheets,
     generatedAt: new Date().toISOString(),
   };
 }
@@ -226,6 +305,7 @@ function renderIndexHtml(payload) {
   const headHtml = payload.ok ? renderTableHead(payload.headers) : "";
   const bodyHtml = payload.ok ? renderTableBody(payload.rows, payload.headers) : "";
   const initialPayload = JSON.stringify(payload).replace(/<\//g, "<\\/");
+  const availableSheets = JSON.stringify(payload.availableSheets || []).replace(/<\//g, "<\\/");
 
   return template
     .replace(
@@ -236,26 +316,31 @@ function renderIndexHtml(payload) {
     .replace('<tbody id="table-body"></tbody>', `<tbody id=\"table-body\">${bodyHtml}</tbody>`)
     .replace(
       '<script src="/app.js"></script>',
-      `<script>window.__INITIAL_DATA__ = ${initialPayload};</script>\n    <script src=\"/app.js\"></script>`
+      `<script>window.__INITIAL_DATA__ = ${initialPayload}; window.__AVAILABLE_SHEETS__ = ${availableSheets};</script>\n    <script src=\"/app.js\"></script>`
     );
 }
 
 app.use(express.static(PUBLIC_DIR, { index: false }));
 
 app.get("/", (req, res) => {
-  const payload = readExcelData();
+  const payload = readExcelData(req.query.sheet);
   const html = renderIndexHtml(payload);
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   return res.send(html);
 });
 
 app.get("/api/data", (req, res) => {
-  const payload = readExcelData();
+  const payload = readExcelData(req.query.sheet);
+  res.json(payload);
+});
+
+app.get("/api/sheets", (req, res) => {
+  const payload = readSheetSummaries();
   res.json(payload);
 });
 
 app.get("/api/data.csv", (req, res) => {
-  const payload = readExcelData();
+  const payload = readExcelData(req.query.sheet);
 
   if (!payload.ok) {
     return res.status(404).send(payload.message);
@@ -268,7 +353,7 @@ app.get("/api/data.csv", (req, res) => {
 });
 
 app.get("/api/mysql.sql", (req, res) => {
-  const payload = readExcelData();
+  const payload = readExcelData(req.query.sheet);
 
   if (!payload.ok) {
     return res.status(404).send(payload.message);
@@ -283,7 +368,7 @@ app.get("/api/mysql.sql", (req, res) => {
 });
 
 app.get("*", (req, res) => {
-  const payload = readExcelData();
+  const payload = readExcelData(req.query.sheet);
   const html = renderIndexHtml(payload);
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   return res.send(html);

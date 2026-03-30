@@ -19,18 +19,19 @@
     <header class="hero">
       <div>
         <p class="kicker">华瑞新材</p>
-        <h1>生产设备/零件采购数据</h1>
+        <h1>录课改进供应数据看板</h1>
         <p class="subtitle">
-          单月Excel采购数据，可下载SQL/CSV 直接入库
+          同时展示供应数据、供应商表、设备零件表，并支持分表抓取
         </p>
       </div>
       <div class="actions">
-        <a class="btn" href="/api/data.csv" target="_blank" rel="noreferrer">下载 CSV</a>
-        <a class="btn" href="/api/mysql.sql" target="_blank" rel="noreferrer">下载 MySQL SQL</a>
+        <a class="btn" id="download-csv" href="/api/data.csv" target="_blank" rel="noreferrer">下载 CSV</a>
+        <a class="btn" id="download-sql" href="/api/mysql.sql" target="_blank" rel="noreferrer">下载 MySQL SQL</a>
       </div>
     </header>
 
     <main class="panel">
+      <div class="sheet-tabs" id="sheet-tabs"></div>
       <div class="meta" id="meta">正在加载数据...</div>
       <div class="table-wrap">
         <table id="data-table">
@@ -39,7 +40,7 @@
         </table>
       </div>
       <p class="hint">
-        本页数据来自 Excel 第二工作表，字段适合直接导入数据库。
+        可通过 <code>/api/data?sheet=供应数据</code>、<code>/api/data?sheet=供应商表</code>、<code>/api/data?sheet=设备零件表</code> 分别抓取。
       </p>
     </main>
 

@@ -131,6 +131,37 @@ h1 {
   margin-bottom: 10px;
 }
 
+.sheet-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.sheet-tab {
+  border: 1px solid rgba(15, 106, 123, 0.25);
+  background: #fff;
+  color: var(--ink);
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sheet-tab:hover {
+  border-color: rgba(15, 106, 123, 0.5);
+  transform: translateY(-1px);
+}
+
+.sheet-tab.active {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(140deg, var(--brand-2), #2d94a5);
+  box-shadow: 0 8px 16px rgba(15, 106, 123, 0.28);
+}
+
 .table-wrap {
   width: 100%;
   overflow: auto;
