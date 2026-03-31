@@ -22,11 +22,22 @@ function setDownloadLinks(sheetName) {
   sqlLink.href = `/api/mysql.sql?sheet=${encodedSheet}`;
 }
 
+function getCurrentTimeString() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+}
+
+function updateMetaTime() {
+  if (!currentSheet || !meta.dataset.rowCount) return;
+  meta.textContent = `工作表：${currentSheet} | 记录数：${meta.dataset.rowCount} | 生成时间：${getCurrentTimeString()}`;
+}
+
 function renderTable(payload) {
   const headers = payload.headers || [];
   const rows = payload.rows || [];
 
-  meta.textContent = `工作表：${payload.sheetName} | 记录数：${rows.length} | 生成时间：${new Date(payload.generatedAt).toLocaleString()}`;
+  meta.dataset.rowCount = rows.length;
+  updateMetaTime();
   meta.style.color = "";
 
   tableHead.innerHTML = "";
@@ -102,3 +113,6 @@ async function loadData(sheetName, useInitial = false) {
 renderSheetTabs(currentSheet);
 setDownloadLinks(currentSheet);
 loadData(currentSheet, true);
+
+// 每秒更新时间
+setInterval(updateMetaTime, 1000);

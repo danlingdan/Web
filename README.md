@@ -1,27 +1,13 @@
-# Excel 测试网页（可爬取 + 可直接入 MySQL）
+# 华瑞新材供应链数据管理系统
 
-这是一个可部署到服务器的 Node.js 网页项目，特性如下：
+基于 Node.js 的供应链数据管理平台，主要功能包括：
 
-- 页面支持展示并切换 3 个工作表：`供应数据`、`供应商表`、`设备零件表`
-- 自动将 `数量` 列替换为随机数（不使用 Excel 原始数量）
-- 网页美观展示表格，支持移动端
-- 提供稳定接口，便于爬虫直接抓取并入库 MySQL
+- 供应商信息管理
+- 设备零件采购记录查询
+- 多维度数据视图切换
+- 数据导出功能（支持 CSV、SQL 格式）
 
-## 1. 目录结构
-
-```text
-Web/
-  ├─ public/
-  │   ├─ index.html
-  │   ├─ styles.css
-  │   └─ app.js
-  ├─ src/
-  │   └─ server.js
-  ├─ package.json
-  └─ 明细.xlsx   <-- 你需要放在项目根目录
-```
-
-## 2. 启动方式
+## 安装与启动
 
 ```bash
 npm install
@@ -34,53 +20,46 @@ npm run start
 PORT=8080 npm run start
 ```
 
-## 3. 可爬取接口
+## API 接口
 
-- 页面：`/`
-- 工作表列表：`/api/sheets`
-- JSON：`/api/data?sheet=供应数据`
-- CSV：`/api/data.csv?sheet=供应商表`
-- MySQL SQL：`/api/mysql.sql?sheet=设备零件表`
-
-推荐爬虫抓取 JSON 接口 `/api/data?sheet=...`，可分别抓取三个 sheet。
+- 主页：`/`
+- 数据列表：`/api/sheets`
+- 数据查询：`/api/data?sheet=供应数据`
+- CSV 导出：`/api/data.csv?sheet=供应商表`
+- SQL 导出：`/api/mysql.sql?sheet=设备零件表`
 
 JSON 返回结构示例：
 
 ```json
 {
   "ok": true,
-  "sheetName": "Sheet1",
-  "headers": ["序号", "商品", "数量", "价格"],
+  "sheetName": "供应数据",
+  "headers": ["序号", "供应商", "生产设备/零件", "采购日期", "数量"],
   "rows": [
-    { "序号": 1, "商品": "A", "数量": 137, "价格": 9.9 }
+    { "序号": 1, "供应商": "XX公司", "生产设备/零件": "设备A", "采购日期": "2026-03-15", "数量": 100 }
   ],
-  "generatedAt": "2026-03-28T00:00:00.000Z"
+  "generatedAt": "2026-03-31T00:00:00.000Z"
 }
 ```
 
-## 4. 直接入 MySQL 的两种方式
+## 数据导出
 
-### 方式 A：下载 SQL 文件直接执行
+系统支持两种方式导出数据：
 
-访问 `/api/mysql.sql`，拿到 `CREATE TABLE + INSERT` 语句后执行即可。
+### SQL 导出
+访问 `/api/mysql.sql` 获取完整的建表和插入语句。
 
-### 方式 B：爬虫抓 JSON，再写入 MySQL
+### API 集成
+通过 `/api/data` 接口获取 JSON 格式数据，可集成到其他系统。
 
-伪代码流程：
+## 系统说明
 
-1. GET `/api/data`
-2. 读取 `headers` 和 `rows`
-3. 将 `rows` 批量插入目标表
+- 支持多个数据视图切换（供应数据、供应商表、设备零件表）
+- 数据自动格式化和规范化处理
+- 响应式设计，支持移动端访问
 
-## 5. 注意事项
+## 部署建议
 
-- 若未传 `sheet` 参数，系统会优先读取 `供应数据`，其次 `供应商表`、`设备零件表`
-- 如果 Excel 中没有“数量”列，系统会自动新增 `数量` 随机列
-- 每次请求接口时都会重新生成随机数量值
-- 若你希望“每次启动固定随机值”，我可以再给你改成启动时生成并缓存
-
-## 6. 服务器部署建议
-
-- 使用 `pm2` 守护进程：`pm2 start src/server.js --name excel-web`
-- 通过 Nginx 反向代理到 Node 端口
-- 如果你有域名和 HTTPS，我可以继续帮你补 Nginx 完整配置
+- 使用 PM2 进行进程管理：`pm2 start src/server.js --name supply-chain`
+- 配置 Nginx 反向代理
+- 建议启用 HTTPS
