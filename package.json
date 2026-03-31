@@ -1,7 +1,7 @@
 {
-  "name": "excel-web-mysql-ready",
+  "name": "supply-chain-management",
   "version": "1.0.0",
-  "description": "展示 Excel 数据并提供可抓取 API，支持直接导入 MySQL",
+  "description": "华瑞新材供应链数据管理系统",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
